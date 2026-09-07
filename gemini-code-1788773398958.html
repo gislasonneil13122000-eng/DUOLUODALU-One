@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>斗罗大陆：沉浸式文字模拟器</title>
+  <style>
+    :root {
+      --bg-color: #0d0e12;
+      --card-bg: #161820;
+      --panel-border: #7A5E3F;
+      --text-main: #e2e4ed;
+      --text-muted: #8c8578;
+      --accent-gold: #8C6E2E;
+      --accent-red: #9C4E2E;
+      --accent-blue: #4E5E6E;
+      --accent-green: #5E6E4E;
+      --btn-bg: #2B2620;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    body { background-color: var(--bg-color); color: var(--text-main); display: flex; justify-content: center; min-height: 100vh; padding: 10px; }
+    
+    /* 严格遵照竖版 18em (~300px-380px) 容器规范 */
+    #app-container {
+      width: 100%;
+      max-width: 22em;
+      background: var(--card-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    /* 顶部状态栏 */
+    header {
+      background: #050508;
+      padding: 10px;
+      border-bottom: 1px solid var(--panel-border);
+      font-size: 0.85rem;
+    }
+    .status-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .status-bar { height: 6px; background: #2a2d3d; border-radius: 3px; overflow: hidden; margin-top: 2px; }
+    .status-fill { height: 100%; transition: width 0.3s; }
+
+    /* 场景图片区域 (含加载与优雅降级) */
+    #image-wrapper {
+      position: relative;
+      width: 100%;
+      height: 160px;
+      background: radial-gradient(circle at center, #2b1055 0%, #110321 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    #scene-img { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.5s; }
+    #img-loader { position: absolute; color: #a3a8cc; font-size: 0.75rem; text-align: center; padding: 0 10px; }
+
+    /* 剧情叙事主体区 */
+    #story-panel {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      max-height: 350px;
+      font-size: 0.92rem;
+      line-height: 1.6;
+      border-bottom: 1px solid #2b2d3a;
+    }
+    .story-text { margin-bottom: 10px; color: #d0d3e0; white-space: pre-wrap; }
+
+    /* 选项与输入区 */
+    #action-panel { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .option-btn {
+      background: var(--btn-bg);
+      color: #fff;
+      border: 1px solid #3a332a;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: left;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .option-btn:hover { background: var(--panel-border); }
+    .option-tag { display: inline-block; font-size: 0.7rem; padding: 1px 5px; border-radius: 2px; float: right; }
+
+    /* 自由输入框 */
+    .input-group { display: flex; gap: 5px; margin-top: 5px; }
+    #custom-input {
+      flex: 1;
+      background: #0d0e12;
+      border: 1px solid #3a332a;
+      color: #fff;
+      padding: 8px;
+      border-radius: 4px;
+      font-size: 0.85rem;
+    }
+    #send-btn { background: var(--accent-gold); border: none; color: white; padding: 0 12px; border-radius: 4px; cursor: pointer; }
+
+    /* 设置与 API Key 弹窗 */
+    #config-modal {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.8); display: none; align-items: center; justify-content: center;
+    }
+    .modal-box { background: var(--card-bg); padding: 15px; border-radius: 6px; width: 85%; max-width: 300px; border: 1px solid var(--panel-border); }
+    .modal-box input { width: 100%; padding: 8px; margin: 10px 0; background: #000; color: #fff; border: 1px solid #444; }
+  </style>
+</head>
+<body>
+
+<div id="app-container">
+  <!-- 顶部状态栏 -->
+  <header>
+    <div class="status-row">
+      <span id="player-name">陆沉 (6岁)</span>
+      <span id="player-realm" style="color:var(--accent-gold)">魂士 · 5级</span>
+    </div>
+    <div class="status-row" style="font-size: 0.75rem; color: var(--text-muted);">
+      <span id="player-location">天斗帝国 · 圣魂村</span>
+      <span>命数: <b id="player-lives" style="color:var(--accent-red)">3/3</b></span>
+    </div>
+    <!-- 属性条 -->
+    <div style="margin-top:6px;">
+      <div class="status-row" style="font-size:0.7rem;"><span>生命 (HP)</span><span id="hp-text">100/100</span></div>
+      <div class="status-bar"><div id="hp-bar" class="status-fill" style="width: 100%; background: var(--accent-red);"></div></div>
+      <div class="status-row" style="font-size:0.7rem; margin-top:3px;"><span>魂力 (RP)</span><span id="rp-text">50/100</span></div>
+      <div class="status-bar"><div id="rp-bar" class="status-fill" style="width: 50%; background: var(--accent-green);"></div></div>
+    </div>
+  </header>
+
+  <!-- 场景图片 -->
+  <div id="image-wrapper">
+    <div id="img-loader">世界线收束中...</div>
+    <img id="scene-img" alt="Scene">
+  </div>
+
+  <!-- 剧情输出面板 -->
+  <div id="story-panel">
+    <div class="story-text" id="story-content">
+六岁觉醒，一念定天命。你降临于天斗帝国圣魂村。村口残碑旁聚了几个人，低声讨论着武魂殿执事即将来临的消息……
+    </div>
+  </div>
+
+  <!-- 交互选项区 -->
+  <div id="action-panel">
+    <button class="option-btn" onclick="makeChoice('A')">A. 随村民前往武魂殿进行觉醒 <span class="option-tag" style="background:var(--accent-blue)">平和</span></button>
+    <button class="option-btn" onclick="makeChoice('B')">B. 向村头铁匠打听近期的传闻 <span class="option-tag" style="background:var(--accent-gold)">机缘</span></button>
+    <button class="option-btn" onclick="makeChoice('C')">C. 独自深入后山尝试猎捕野兔 <span class="option-tag" style="background:var(--accent-red)">风险</span></button>
+    
+    <div class="input-group">
+      <input type="text" id="custom-input" placeholder="✎ 自由行动输入...">
+      <button idsend-btn onclick="handleCustomInput()">发送</button>
+    </div>
+    <button onclick="toggleConfig()" style="background:transparent; border:none; color:var(--text-muted); font-size:0.7rem; margin-top:4px; cursor:pointer;">⚙️ API 与引擎设置</button>
+  </div>
+</div>
+
+<!-- 设置弹窗 -->
+<div id="config-modal">
+  <div class="modal-box">
+    <h3>引擎配置</h3>
+    <p style="font-size:0.75rem; color:#aaa; margin-top:5px;">填入 API Key 即可连接 DeepSeek / OpenAI 进行 AI GM 实时发牌：</p>
+    <input type="text" id="api-url" placeholder="API 地址 (默认 DeepSeek)" value="https://api.deepseek.com/v1/chat/completions">
+    <input type="password" id="api-key" placeholder="sk-xxxxxxxxxxxxxxxx">
+    <button onclick="saveConfig()" style="width:100%; padding:8px; background:var(--accent-gold); border:none; color:#fff;">保存并继续</button>
+  </div>
+</div>
+
+<script>
+// ---------------- 游戏状态与核心配置 ----------------
+let config = {
+  apiUrl: localStorage.getItem('ds_api_url') || 'https://api.deepseek.com/v1/chat/completions',
+  apiKey: localStorage.getItem('ds_api_key') || ''
+};
+
+// 判定图片加载与回退逻辑 (解决黑屏问题)
+function loadSceneImage(promptText) {
+  const img = document.getElementById('scene-img');
+  const loader = document.getElementById('img-loader');
+  const wrapper = document.getElementById('image-wrapper');
+
+  loader.style.display = 'block';
+  loader.innerText = '世界线收束中 (绘制场景中...)';
+  img.style.opacity = '0';
+  wrapper.style.background = '#050508';
+
+  const targetUrl = `https://pollinations.ai/p/${encodeURIComponent("anime, fantasy, douluo dalu, " + promptText)}?width=600&height=320&nologo=true`;
+  
+  const timeoutTimer = setTimeout(() => triggerFallback(), 7000); // 7秒超时回退
+
+  img.src = targetUrl;
+  img.onload = () => {
+    clearTimeout(timeoutTimer);
+    loader.style.display = 'none';
+    img.style.opacity = '1';
+  };
+  img.onerror = () => {
+    clearTimeout(timeoutTimer);
+    triggerFallback();
+  };
+
+  function triggerFallback() {
+    loader.style.display = 'none';
+    img.style.opacity = '0';
+    wrapper.style.background = 'radial-gradient(circle at center, #2b1055 0%, #7597de 50%, #110321 100%)';
+  }
+}
+
+// ---------------- API 调用与逻辑引擎 ----------------
+async function makeChoice(optionKey) {
+  const inputVal = optionKey ? `玩家选择了选项 ${optionKey}` : document.getElementById('custom-input').value;
+  if (!inputVal) return;
+
+  const storyPanel = document.getElementById('story-content');
+  storyPanel.innerText += `\n\n> 行动: ${inputVal}\n\n正在进行规则与命运判定...`;
+  
+  // 更新图片
+  loadSceneImage("douluo martial soul awakening fantasy scene " + inputVal);
+
+  if (!config.apiKey) {
+    setTimeout(() => {
+      storyPanel.innerText += `\n\n【离线演练模式】：你选择了 [${inputVal}]。由于未配置 API Key，GM 暂时无法生成后续深度剧情。请点击下方“API设置”填入密钥体验完整的文字 RPG 交互！`;
+    }, 1000);
+    return;
+  }
+
+  // 若配置了 API，调用 DeepSeek 大模型 GM
+  try {
+    const res = await fetch(config.apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${config.apiKey}`
+      },
+      body: JSON.stringify({
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: "你是在线《斗罗大陆：沉浸式文字模拟器》的 GM。请遵循世界观，以精炼有画面感语言进行 1-3 句剧情描述，并提供下一个回合的 A/B/C 选项。" },
+          { role: "user", content: inputVal }
+        ]
+      })
+    });
+    const data = await res.json();
+    const reply = data.choices[0].message.content;
+    storyPanel.innerText += `\n\n${reply}`;
+  } catch (err) {
+    storyPanel.innerText += `\n\n[网络/API 响应异常]: 请检查 API Key 配置。`;
+  }
+}
+
+function handleCustomInput() {
+  makeChoice(null);
+  document.getElementById('custom-input').value = '';
+}
+
+function toggleConfig() {
+  const modal = document.getElementById('config-modal');
+  modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+}
+
+function saveConfig() {
+  config.apiUrl = document.getElementById('api-url').value;
+  config.apiKey = document.getElementById('api-key').value;
+  localStorage.setItem('ds_api_url', config.apiUrl);
+  localStorage.setItem('ds_api_key', config.apiKey);
+  toggleConfig();
+  alert('设置已保存！');
+}
+
+// 初始化加载首图
+loadSceneImage("Holy Soul Village, Douluo Continent, village entryway");
+</script>
+</body>
+</html>
